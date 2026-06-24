@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(New-Item -ItemType Directory -Force \"e:\\\\website-asset-extractor\\\\frontend\\\\src\\\\components\")",
+      "PowerShell(New-Item -ItemType Directory -Force \"e:\\\\website-asset-extractor\\\\frontend\\\\src\\\\pages\")",
+      "PowerShell(New-Item -ItemType Directory -Force \"e:\\\\website-asset-extractor\\\\frontend\\\\src\\\\services\")"
+    ]
+  }
+}
