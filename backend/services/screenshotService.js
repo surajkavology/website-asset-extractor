@@ -1,7 +1,7 @@
-const { chromium } = require('playwright');
+const { launchBrowser } = require('../utils/launchBrowser');
 
 async function takeScreenshots(url) {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser();
   let desktopBase64 = null;
   let mobileBase64 = null;
 

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { chromium } = require('playwright');
+const { launchBrowser } = require('../utils/launchBrowser');
 const { extractAssets } = require('../services/assetExtractor');
 const { takeScreenshots } = require('../services/screenshotService');
 const { fetchAndParseFonts } = require('../services/fontService');
@@ -22,7 +22,7 @@ router.post('/', async (req, res) => {
 
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await launchBrowser();
     const context = await browser.newContext({
       viewport: { width: 1280, height: 800 },
       userAgent:
