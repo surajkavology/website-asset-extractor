@@ -37,3 +37,12 @@ export async function downloadFontZip(fonts) {
   link.click();
   URL.revokeObjectURL(link.href);
 }
+
+/**
+ * Request on-demand screenshots from the backend.
+ * Returns { desktopBase64, mobileBase64 } or throws with err.response.data.error.
+ */
+export async function fetchScreenshots(url) {
+  const res = await axios.post(`${API_BASE}/screenshot`, { url }, { timeout: 90000 });
+  return res.data;
+}

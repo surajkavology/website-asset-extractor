@@ -44,7 +44,7 @@ export default function AssetTabs({ data }) {
       case 'colors': return <ColorPalette colors={data.colors} />;
       case 'meta': return <MetaCard meta={data.meta} />;
       case 'techstack': return <TechStackCard techStack={data.techStack} />;
-      case 'screenshots': return <ScreenshotCard screenshots={data.screenshots} />;
+      case 'screenshots': return <ScreenshotCard screenshots={data.screenshots} url={data.url} />;
       default: return null;
     }
   }

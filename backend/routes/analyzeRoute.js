@@ -1,12 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { launchBrowser } = require('../utils/launchBrowser');
+const { fetchPage, fetchCssFiles } = require('../services/fetchService');
 const { extractAssets } = require('../services/assetExtractor');
-const { takeScreenshots } = require('../services/screenshotService');
 const { fetchAndParseFonts } = require('../services/fontService');
 const { extractMeta } = require('../services/metaService');
 const { detectTechStack } = require('../services/techStackService');
-const { extractColors } = require('../services/colorService');
+const { parseColors } = require('../services/colorService');
 
 router.post('/', async (req, res) => {
   const { url } = req.body;
@@ -20,68 +19,29 @@ router.post('/', async (req, res) => {
     targetUrl = 'https://' + targetUrl;
   }
 
-  let browser;
   try {
-    browser = await launchBrowser();
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    });
-    const page = await context.newPage();
-
-    // ── Intercept all CSS responses during page load ──────────────────────────
-    // We collect response.text() promises here (not awaited yet) so the body is
-    // available.  We MUST resolve them before browser.close().
-    const cssResponsePromises = [];
-    const seenCssUrls = new Set();
-
-    page.on('response', (response) => {
-      const rUrl = response.url();
-      if (seenCssUrls.has(rUrl)) return;
-      const ct = response.headers()['content-type'] || '';
-      // Accept both explicit text/css and any URL that looks like a CSS file
-      if (ct.includes('text/css') || /\.css(\?|$)/i.test(rUrl.split('?')[0])) {
-        seenCssUrls.add(rUrl);
-        cssResponsePromises.push(
-          response
-            .text()
-            .then((text) => ({ url: rUrl, text }))
-            .catch(() => null)
-        );
-      }
-    });
-    // ─────────────────────────────────────────────────────────────────────────
-
-    await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(2000);
-
-    const html = await page.content();
-    const finalUrl = page.url();
-
-    // Resolve all CSS bodies BEFORE closing the browser
-    const cssSettled = await Promise.allSettled(cssResponsePromises);
-    const cssContents = cssSettled
-      .filter((r) => r.status === 'fulfilled' && r.value)
-      .map((r) => r.value);
-
-    await browser.close();
-    browser = null;
+    // ── Fetch page HTML with Axios (no browser needed) ────────────────────────
+    const { html, finalUrl } = await fetchPage(targetUrl);
 
     console.log(`[Analyze] URL: ${finalUrl}`);
-    console.log(`[Analyze] CSS files intercepted: ${cssContents.length}`);
 
+    // ── Parse HTML with Cheerio ───────────────────────────────────────────────
     const assets = extractAssets(html, finalUrl);
-    const meta = extractMeta(html, finalUrl);
+    const meta   = extractMeta(html, finalUrl);
     const techStack = detectTechStack(html, assets.jsFiles, assets.cssFiles);
-    const cssUrls = assets.cssFiles.map((c) => c.url).filter(Boolean);
-    const inlineStyles = assets.inlineCss.map((c) => c.content).join('\n');
 
-    const [fonts, colors, screenshots] = await Promise.allSettled([
-      // Pass intercepted CSS (not URLs) + page URL for inline style resolution
+    const cssUrls    = assets.cssFiles.map((c) => c.url).filter(Boolean);
+    const inlineCssText = assets.inlineCss.map((c) => c.content).join('\n');
+
+    // ── Fetch all external CSS once — shared by font + color extraction ───────
+    const cssContents = await fetchCssFiles(cssUrls);
+    const combinedCssText = inlineCssText + '\n' + cssContents.map((c) => c.text).join('\n');
+
+    console.log(`[Analyze] CSS files fetched: ${cssContents.length}`);
+
+    const [fonts, colors] = await Promise.allSettled([
       Promise.resolve(fetchAndParseFonts(cssContents, html, finalUrl)),
-      extractColors(cssUrls, inlineStyles),
-      takeScreenshots(finalUrl),
+      Promise.resolve(parseColors(combinedCssText)),
     ]);
 
     const fontData =
@@ -89,21 +49,20 @@ router.post('/', async (req, res) => {
 
     res.json({
       url: finalUrl,
-      images: assets.images,
-      videos: assets.videos,
-      svgs: assets.svgs,
-      cssFiles: assets.cssFiles,
-      jsFiles: assets.jsFiles,
-      icons: assets.icons,
-      fonts: fontData.fontFaces,
+      images:      assets.images,
+      videos:      assets.videos,
+      svgs:        assets.svgs,
+      cssFiles:    assets.cssFiles,
+      jsFiles:     assets.jsFiles,
+      icons:       assets.icons,
+      fonts:       fontData.fontFaces,
       fontFamilies: fontData.families,
-      colors: colors.status === 'fulfilled' ? colors.value : [],
-      screenshots: screenshots.status === 'fulfilled' ? screenshots.value : {},
+      colors:      colors.status === 'fulfilled' ? colors.value : [],
+      screenshots: {}, // fetched on-demand via POST /api/screenshot
       meta,
       techStack,
     });
   } catch (err) {
-    if (browser) await browser.close().catch(() => {});
     console.error('Analyze error:', err.message);
     res.status(500).json({ error: err.message || 'Failed to analyze URL' });
   }

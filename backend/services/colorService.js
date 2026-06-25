@@ -86,4 +86,7 @@ async function extractColors(cssUrls, inlineStyles) {
   return parseColors(combinedCss);
 }
 
-module.exports = { extractColors };
+// extractColors fetches CSS by URL (used by callers that don't pre-fetch).
+// parseColors works on already-combined CSS text (used by analyzeRoute which
+// pre-fetches CSS once and shares it across font + color extraction).
+module.exports = { extractColors, parseColors };
